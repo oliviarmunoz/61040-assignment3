@@ -17,7 +17,10 @@ class GeminiLLM {
             // Initialize Gemini AI
             const genAI = new generative_ai_1.GoogleGenerativeAI(this.apiKey);
             const model = genAI.getGenerativeModel({
-                model: "gemini-2.5-pro",
+                model: "gemini-2.5-flash-lite",
+                generationConfig: {
+                    maxOutputTokens: 1000,
+                }
             });
             // Execute the LLM
             const result = await model.generateContent(prompt);
