@@ -9,22 +9,26 @@ concept Recommend [Item, Policy]
     purpose select an element from a set according to a policy
     principle based on the specified policy, return a single element from a set
     state
-        a set of Recommends with
-            a policy Policy
-            a set of candidates set(Item)
-            a recommendation Item
+        a policy Policy
+        a set of candidates set(Item)
+        a recommendation Item
     actions
+        addPolicy (newPolicy: Policy)
+            requires: the old policy is not the same as newPolicy
+            effects: updates the policy include the newPolicy
+
+        addCandidate (newCandidates: Item)
+            requires: newCandidate is non empty
+            effects: adds the new candidate to the set of candidates
+
+        updateCandidates (newCandidates: set(Item))
+            requires: newCandidates is non empty
+            effects: updates the set of candidates to newCandidates
+
         recommend (candidates: set(Item), policy: Policy): (recommendation: Item)
             requires: candidates is non empty
             effects: returns one element from candidates according to the given policy
 
-        addPolicy (newPolicy: Policy)
-            requires: the old policy is not the same as newPolicy
-            effects: updates the policy from oldPolicy to newPolicy
-
-        updateCandidates (oldCandidates: set(Item), newCandidates: set(Item))
-            requires: newCandidates is non empty, oldCandidates is not the same as newCandidates
-            effects: updates the set of candidates from oldCandidates to newCandidates
 ```
 
 ### AI-Augmented Concept
@@ -34,23 +38,27 @@ concept Recommend [Item, Policy]
     purpose select an element from a set according to an inferred preference policy
     principle return a single element from a set using an LLM that interprets a learned user preference profile (policy) and reasons over item descriptions (candidates) to recommend the best match
     state
-        a set of Recommenders with
-            a set of candidates set(Item)
-            a policy Policy
-            a recommendation Item
+        a set of candidates set(Item)
+        a policy Policy
+        a recommendation Item
 
     actions
+        addPolicy (newPolicy: Policy)
+            requires: the old policy is not the same as newPolicy
+            effects: updates the policy include the newPolicy
+
+        addCandidate (newCandidates: Item)
+            requires: newCandidate is non empty
+            effects: adds the new candidate to the set of candidates
+
+        updateCandidates (newCandidates: set(Item))
+            requires: newCandidates is non empty
+            effects: updates the set of candidates to newCandidates
+
         recommend(candidates: set(Item), policy: Policy): (recommendation: Item)
             requires: candidates is non empty
             effects: calls the LLM with candidate descriptions and the current policy. The LLM reasons about the policy and how it can be applied to candidates. Returns the item determined to best match the policy.
 
-        addPolicy(newPolicy: Policy)
-            requires: newPolicy differs from current policy
-            effects: updates stored policy to reflect most recent inferred preferences
-
-        updateCandidates(newCandidates: set(Item))
-            requires: newCandidates is non empty and differs from current candidates
-            effects: updates candidate set
 
 ```
 
@@ -88,36 +96,36 @@ A new user signs up for the app and explores their first restaurant. They browse
 
 ### Test 1: Semantic Similarity Prompt
 
-- **Approach:** I tested whether the recommender could generalize a single strong preference (“Sushi”, which was rated 5/5) to similar dishes in the menu, such as “Sushi Rolls” or “Ramen”. This variant explicitly framed the LLM as reasoning by semantic similarity, rather than direct string matching.
-- **What Worked:** The model consistently recommended dishes like “Sushi Rolls”, showing that it could use semantic similarity rather than relying on exact 1:1 matches! Explicitly telling it to “infer similar foods” in the prompt improved reasoning consistency compared to a baseline prompt with no such guidance.
-- **What Went Wrong:** Occasionally, the LLM hallucinated menu items (“Salmon Sashimi”) that weren’t in the provided list. Adding a stronger constraint (“only select dishes from the list below”) fixed most of those violations.
-- **What Issues Remain:** Minor inconsistencies can occur when menu items are phrased differently (e.g., “Sushi roll” vs. “Sushi rolls”), suggesting the LLM’s understanding is sensitive to spelling variation and not entirely semantic.
+- **Approach:** The goal of this test was to see whether the recommender could generalize a single strong preference (“Sushi”, which was rated 5/5) to similar dishes in the menu, such as “Sushi Rolls” or “Ramen”. This was done by prompting the LLM to reason by semantic similarity, rather than direct string matching.
+- **What Worked:** The model consistently recommended dishes like “Sushi Rolls”, showing that it could use semantic similarity rather than relying on exact 1:1 matches! Explicitly telling it to “infer similar foods” in the prompt improved reasoning consistency compared to a generic prompt with no such guidance.
+- **What Went Wrong:** Occasionally, the LLM hallucinated menu items (“Salmon Sashimi”) that weren’t in the provided list, but adding a stronger constraint (“only select dishes from the list below”) fixed most of those violations.
+- **What Issues Remain:** Minor inconsistencies can occur when menu items are phrased differently (e.g., “Sushi roll” vs. “Sushi rolls”), suggesting the LLM is sensitive to spelling variation (reasoning is not entirely semantic).
 
 ### Test 2: Conflicting Preferences Prompt
 
-- **Approach:** This case explored how the model manages preference conflicts, e.g. liking “spicy” (5/5) but disliking “curry” (2/5). The goal was to see if the LLM could resolve trade-offs rather than ignoring one or both signals.
-- **What Worked:** With a prompt emphasizing numerical weighting, the model seemed to prioritize the one with a stronger preference. It recommended “Chili Ramen” in most runs, which satisfies “spicy” without violating the “curry” dislike.
-- **What Went Wrong:** When phrasing was ambiguous (“avoid dishes you think might be disliked”), the model over-filtered and produced overly safe, generic answers (“Tofu Stir Fry”).
-- **What Issues Remain:** The LLM doesn’t actually perform numeric reasoning — it mimics it textually. Results vary if the preference descriptions are reordered or reworded.
+- **Approach:** This case explored how the model manages preference conflicts, e.g. liking “spicy” (5/5) but disliking “curry” (2/5). The goal was to see if the LLM could resolve trade-offs rather than ignoring one or both preferences.
+- **What Worked:** The model seemed to prioritize the foods with a stronger preference. It recommended “Chili Ramen” in most runs, which satisfies “spicy” without violating the “curry” dislike.
+- **What Went Wrong:** When the phrasing of the prompt was ambiguous (“avoid dishes you think might be disliked”), the model over-filtered and produced overly safe, generic answers (“Tofu Stir Fry”).
+- **What Issues Remain:** The LLM doesn’t seem to actually perform numeric reasoning, but instead mimic it with text. The results varied if the preference descriptions are reordered or reworded.
 
 ### Test 3: Noisy Menu Prompt
 
-- **Approach:** The goal of this test was to measure the robustness when given imperfect candidate set. The menu items contained typos and common abbreviations (e.g., “Vegtble Noodlz w/ tofu”). The LLM was prompted to infer intended meanings, but still only return items from the provided list.
-- **What Worked:** The LLM handled light noise surprisingly well, and it still selected the vegetarian noodle dish most of the time.
-- **What Went Wrong:** When multiple noisy items looked similar, the LLM sometimes defaulted to the first in the list rather than reasoning contextually.
-- **What Issues Remain:** The model lacks a good way to clean or normalize the candidate text, especially since we want to ensure that it only outputs a valid menu item.
+- **Approach:** The goal of this test was to measure the robustness when given an imperfect candidate set. The menu items contained typos and common abbreviations (e.g., “Vegtble Noodlz w/ tofu”). The LLM was prompted to infer intended meanings, but still only return items from the provided list.
+- **What Worked:** The LLM handled light these surprisingly well, and it still selected the most appropriate dish most of the time.
+- **What Went Wrong:** When multiple menu items looked similar, the LLM sometimes defaulted to the first in the list rather than reasoning contextually.
+- **What Issues Remain:** The LLM doesn't have a good way to clean/normalize the candidates, which poses a challenge since we want to ensure that it only outputs a valid menu item.
 
 ---
 
 ## Validators
 
-- Invalid Recommendation (i.e. Item Recommended is Not in Candidates). The plausible issue that could happen is the LLM hallucinates and recommends an item that doesn’t exist in the provided candidate. The associated validator is the function `validateRecommendationInCandidates()`
+- Ambiguous/Empty Recommendation: The plausible issue is that the LLM returns a vague or invalid answer like “Any of these would work” or an empty string. This is checked with the function `validateRecommendationIsSpecific()`
 
-- Ambiguous or Empty Recommendation. The plausible issue that could happen is the LLM might return a vague or invalid answer like “Any of these would work” or an empty string. The associated validator is the function `validateRecommendationIsSpecific()`
+- Invalid Recommendation (i.e. the item recommended is not in the candidates set): The plausible issue is that the LLM hallucinates and recommends an item that doesn’t exist in the provided candidate. This is checked with the function `validateRecommendationInCandidates()`
 
-- Policy Inconsistency (Contradictory Preference Updates). The plausible issue that could happen is when updating user preferences, the LLM might try to assign conflicting ratings to the same food (e.g., “Tacos: 5” and “Tacos: 1”). We want to make sure that each preference only appears once and the rating needs to be between 1 and 5. The associated validator is the function `validatePolicyConsistency()`
+- Policy Inconsistency: The plausible issue is that when updating user preferences, the LLM might try to assign invalid ratings to a food. We want to make sure that each preference rating needs to be between 1 and 5. This is checked with the function `validatePolicyConsistency()`
 
-Overall, there are three plausible issues that could emerge when using the LLM: invalid recommendations, ambiguous or empty outputs, and policy inconsistencies. To handle these, I implemented corresponding validators that check each of these conditions before finalizing recommendations (all wrapped in a validate function). This way, even if the LLM produces something invalid or incorrect, the user experience is unaffected.
+Overall, there are three plausible issues that could emerge when using the LLM: ambiguous or empty recommendation, invalid recommendation, and policy inconsistencies. To handle these, I implemented corresponding validators that check each of these conditions before finalizing recommendations (all wrapped in a validate function). This way, even if the LLM produces something invalid or incorrect, the user experience is unaffected.
 
 ## Run App
 
